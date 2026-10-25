@@ -1,0 +1,18 @@
+# /etc/network/interfaces on the Proxmox host — VLAN-aware bridge on the switch trunk (Gi0/2)
+auto lo
+iface lo inet loopback
+
+iface eno1 inet manual
+
+auto vmbr0
+iface vmbr0 inet manual
+    bridge-ports eno1
+    bridge-stp off
+    bridge-fd 0
+    bridge-vlan-aware yes
+    bridge-vids 10 20 30 40
+
+auto vmbr0.30
+iface vmbr0.30 inet static
+    address 10.2.0.100/28
+    gateway 10.2.0.97

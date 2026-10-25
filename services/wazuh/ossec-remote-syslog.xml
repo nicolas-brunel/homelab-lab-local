@@ -1,0 +1,9 @@
+<!-- Added to /var/ossec/etc/ossec.conf on SIEM01, after the agents' <remote> block.
+     Track B: add <allowed-ips>10.2.0.98</allowed-ips> for the switch. -->
+<remote>
+  <connection>syslog</connection>
+  <port>514</port>
+  <protocol>udp</protocol>
+  <allowed-ips>10.2.0.97</allowed-ips>
+  <local_ip>10.2.0.102</local_ip>
+</remote>
