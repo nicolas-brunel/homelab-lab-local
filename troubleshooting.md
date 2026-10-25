@@ -1,6 +1,6 @@
 # Troubleshooting log
 
-Real problems met while building this lab (30 entries), with the cause found and the fix applied. Most of them are classic issues that also happen in production environments.
+Real problems met while building this lab (35 entries), with the cause found and the fix applied. Most of them are classic issues that also happen in production environments.
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -34,6 +34,19 @@ Real problems met while building this lab (30 entries), with the cause found and
 | Agent “disconnected” | VM off, or agent stopped | start the VM / service; investigate if running |
 | PROXY01 → SIEM01 blocked | SIEM01 off, or Apply not clicked | start SIEM01, apply the rules |
 | RAM at 97 % with all VMs | VMs reserve memory; iGPU reserved 4 GB | run by scenario; UMA buffer 1G in BIOS |
+
+
+## Found during the verification run (October 2026)
+
+Five more problems found while re-testing every feature to take the [screenshots](docs/screenshots/README.md). Each one was diagnosed, fixed and re-tested.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| New user's first logon: black wallpaper, command prompt not blocked, drives missing | *Fast Logon Optimization*: at first logon Windows opens the session without waiting for the network and applies user GPOs in the background | log off/on (sometimes twice); in production, computer GPO "Toujours attendre le réseau lors du démarrage et de l'ouverture de session" |
+| Direction user gets P: and D: but not F:, V:, T: | item-level targeting with two groups: the second condition was joined with **AND** (default) → "member of both groups", which matches nobody | Targeting → select the second condition → Item options → **OR**; gpupdate /force + log off/on |
+| `dcdiag` fails DFSREvent / SystemLog; DHCP events 1035, 1036, 1059 after each DC boot | on a single-DC lab the DHCP service starts before AD DS is ready; the DHCP local security groups were missing | `netsh dhcp add securitygroups`, restart DHCP, `sc config dhcpserver start= delayed-auto`; verified clean at the next boot (only 1044 "authorized") |
+| Scheduled and one-time backups fail: "cannot read the backup destination"; ping, port 445 and `net use` with the same account all work | the credentials stored in the backup schedule were outdated | `net use * /delete`, then Backup Schedule → Modify → re-enter LAB\SVC-Backup at the destination step; backup succeeded |
+| Backup progress window stuck at "0 KB transferred" for 30 minutes | the progress dialog does not refresh; the backup had actually finished | check the main wbadmin page (F5) before cancelling; if it is really stuck, see the VSS entry above |
 
 ## Method used
 

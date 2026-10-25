@@ -80,7 +80,9 @@ Key rules (full tables in [`network/opnsense`](network/opnsense/README.md) and [
 └─ ROADMAP.md                          next steps (automation with Python / Ansible)
 ```
 
-**Start with [`troubleshooting.md`](troubleshooting.md)** — it is the most honest picture of the work: 30 real problems and how each was diagnosed.
+**Start with [`troubleshooting.md`](troubleshooting.md)** — it is the most honest picture of the work: 35 real problems and how each was diagnosed.
+
+**See it running:** the [screenshot gallery](docs/screenshots/README.md) shows every feature tested on the live lab — firewall blocks, GPOs, AGDLP, GLPI with AD login, DMZ isolation, backup and restore, Wazuh detections.
 
 ## Documentation
 
