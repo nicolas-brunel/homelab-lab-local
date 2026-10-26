@@ -84,6 +84,10 @@ Firewall → NAT → Destination NAT: WAN, TCP, destination *WAN address* port 4
 | Interfaces → [WAN] | Block private networks | ✗ (lab only) | the lab WAN is itself private (VMware NAT); keep ✓ in production |
 | Interfaces → [DMZ] | Block private / bogon | ✗ | internal zone |
 
+## Web interface certificate (v1.1)
+
+System → Trust: LAB-ROOT-CA imported as an authority (certificate only, no private key); certificate `fw01.lab.local` created as a CSR on OPNsense, signed by the CA, imported back, and selected in System → Settings → Administration.
+
 ## Remote syslog
 
 System → Settings → Logging → Remote: UDP to `10.2.0.102:514` (Wazuh SIEM01), all applications.

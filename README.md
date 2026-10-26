@@ -1,10 +1,12 @@
 # Home Lab — Small-Business Infrastructure (`lab.local`)
 
-A complete small-business IT infrastructure built from scratch and documented end to end: segmented network with a DMZ, Active Directory, file server with AGDLP permissions, GLPI helpdesk published over HTTPS, NAS with RAID 1 and tested restores, and a Wazuh SIEM.
+A complete small-business IT infrastructure built from scratch and documented end to end: segmented network with a DMZ, Active Directory, file server with AGDLP permissions, GLPI helpdesk published over HTTPS, NAS with RAID 1 and tested restores, a Wazuh SIEM and an internal PKI (AD CS) for LDAPS and trusted certificates.
 
 The network was first built **virtually** (VMware Workstation + OPNsense firewall) and then translated to **real Cisco hardware** (router-on-a-stick, managed switch, Proxmox). Both versions use the same IP plan and the same security rules.
 
-> Inspired by a project from my TSSR training (systems & network administration), rebuilt alone at home and extended with a DMZ, a SIEM, backups and a hardware version.
+> Inspired by a project from my TSSR training (systems & network administration), rebuilt alone at home and extended with a DMZ, a SIEM, backups, a PKI and a hardware version.
+>
+> **v1.1 (October 2026): PKI added** — see [what changed](#v11--pki).
 
 ![Logical diagram](docs/diagrams/logical-diagram.png)
 
@@ -16,8 +18,9 @@ The network was first built **virtually** (VMware Workstation + OPNsense firewal
 |---|---|---|
 | Routing, filtering, NAT, DHCP relay, syslog | fw01 | OPNsense 26.7 — *or* Cisco ISR + Catalyst 2960 |
 | Directory, DNS, DHCP, NTP, Group Policy | SRV-AD | Windows Server 2022 |
+| Certificate authority: LDAPS, HTTPS certificates | CA01 | Windows Server 2025 · AD CS |
 | File shares with AGDLP permissions | FS01 | Windows Server 2025 |
-| Helpdesk and knowledge base (LDAP to AD) | LNX01 | Debian 13 · GLPI · Apache · MariaDB |
+| Helpdesk and knowledge base (LDAPS to AD) | LNX01 | Debian 13 · GLPI · Apache · MariaDB |
 | Backup storage (RAID 1) | NAS01 | OpenMediaVault |
 | Security monitoring (SIEM) | SIEM01 | Ubuntu Server 26.04 · Wazuh 4.14 |
 | Publication of GLPI over HTTPS | PROXY01 (DMZ) | Debian 13 · Nginx reverse proxy |
@@ -30,7 +33,7 @@ The network was first built **virtually** (VMware Workstation + OPNsense firewal
 | Zone | VLAN | Network | Gateway | Who lives there |
 |---|---|---|---|---|
 | UTILISATEURS (users) | 10 | 10.2.0.0/26 | 10.2.0.1 | workstations — DHCP via relay |
-| SERVEURS (servers) | 20 | 10.2.0.64/27 | 10.2.0.65 | AD, file server, GLPI, NAS |
+| SERVEURS (servers) | 20 | 10.2.0.64/27 | 10.2.0.65 | AD, certificate authority, file server, GLPI, NAS |
 | ADMINISTRATION | 30 | 10.2.0.96/28 | 10.2.0.97 | admin PC, SIEM, device management |
 | DMZ | 40 | 10.2.0.112/28 | 10.2.0.113 | reverse proxy only |
 
@@ -52,41 +55,56 @@ Key rules (full tables in [`network/opnsense`](network/opnsense/README.md) and [
 - **Active Directory**: OU design, 13 users, AGDLP groups (5 global / 9 domain local), 4 GPOs (password & lockout policy, wallpaper, drive mapping with item-level targeting, CMD restriction), logon hours.
 - **Firewall**: aliases, per-zone rules, DHCP relay, destination NAT, GUI restricted to the admin zone, remote syslog to the SIEM.
 - **Cisco version**: VLANs, port security, BPDU guard, native VLAN 999, router-on-a-stick with `ip helper-address`, stateless ACLs with `established`, NAT overload + static PAT, SSH-only management with `access-class`, NTP and syslog.
-- **GLPI**: secure file layout (config and data outside the web root), LDAP authentication against AD, profiles, ITIL categories, ticket workflow and knowledge base.
+- **GLPI**: secure file layout (config and data outside the web root), LDAPS authentication against AD, profiles, ITIL categories, ticket workflow and knowledge base.
 - **Backups**: Windows Server Backup to the NAS with a domain service account, Linux backup script with cron (DB dump + files + `glpicrypt.key`), **documented restore test**.
 - **SIEM**: Wazuh all-in-one, agents on every machine, firewall syslog ingestion, detection tests (account lockout — rule 60115, repeated blocks / scans — rule 87702).
-- **DMZ**: Nginx TLS reverse proxy, isolation verified from the DMZ host.
+- **DMZ**: Nginx TLS reverse proxy with a certificate from the internal CA, isolation verified from the DMZ host.
+- **PKI**: Enterprise root CA on a dedicated server, CRL/AIA over LDAP and HTTP, minimal templates, auto-enrollment by GPO, LDAPS on the domain controller, CSR-based certificates for GLPI, OPNsense and Wazuh (private keys never leave the device), CA backup to the NAS.
+- **Detection engineering**: CA auditing enabled and custom Wazuh rules for AD CS events (mapped to MITRE ATT&CK T1649).
 - **Hardening**: SSH keys only, root login disabled, host firewall (ufw), services listening only where needed.
 
 ## Repository contents
 
 ```
 ├─ docs/
-│   ├─ HomeLab_Complete_Guide_EN.pdf   full rebuild guide (72 pages) — English
+│   ├─ HomeLab_Complete_Guide_EN.pdf   full rebuild guide (79 pages) — English
 │   ├─ HomeLab_Guide_Complet_FR.pdf    same guide in French
 │   ├─ addressing.md                   IP plan, inventory, DNS, web interfaces, flows
-│   ├─ acceptance-tests.md             27-test acceptance checklist
+│   ├─ acceptance-tests.md             32-test acceptance checklist
 │   ├─ diagrams/                       logical and physical diagrams
 │   └─ screenshots/                    proof screenshots
 ├─ network/
 │   ├─ opnsense/                       aliases, rules, NAT, relay (track A)
 │   ├─ cisco/                          SW-LAB, R-LAB, L3-switch variant (track B)
 │   └─ proxmox/                        VLAN-aware bridge configuration
-├─ services/                           GLPI (Apache), Nginx, Wazuh, SSH configs
+├─ services/                           GLPI (Apache), Nginx, Wazuh (syslog + AD CS rules), SSH, PKI (CAPolicy.inf)
 ├─ scripts/
-│   ├─ linux/                          GLPI backup script, ufw
-│   └─ windows/                        AD user creation, share/ACL export, NTP
+│   ├─ linux/                          GLPI backup, ufw, trust the lab root CA
+│   └─ windows/                        AD user creation, share/ACL export, NTP, CA backup
 ├─ troubleshooting.md                  real problems met: symptom → cause → fix
 └─ ROADMAP.md                          next steps (automation with Python / Ansible)
 ```
 
-**Start with [`troubleshooting.md`](troubleshooting.md)** — it is the most honest picture of the work: 35 real problems and how each was diagnosed.
+**Start with [`troubleshooting.md`](troubleshooting.md)** — it is the most honest picture of the work: 42 real problems and how each was diagnosed.
 
-**See it running:** the [screenshot gallery](docs/screenshots/README.md) shows every feature tested on the live lab — firewall blocks, GPOs, AGDLP, GLPI with AD login, DMZ isolation, backup and restore, Wazuh detections.
+**See it running:** the [screenshot gallery](docs/screenshots/README.md) shows every feature tested on the live lab — firewall blocks, GPOs, AGDLP, GLPI with AD login, DMZ isolation, backup and restore, Wazuh detections, and the PKI before/after.
 
 ## Documentation
 
 The [complete guide](docs/HomeLab_Complete_Guide_EN.pdf) rebuilds the whole lab from an empty computer, step by step, with a check after every step. It has two network tracks (VMware + OPNsense, or Cisco hardware + Proxmox) followed by the shared server chapters, then acceptance tests, operating procedures, known problems and a backup policy. A [French version](docs/HomeLab_Guide_Complet_FR.pdf) is also available.
+
+## v1.1 — PKI
+
+The first version had two weak points: GLPI sent its LDAP bind password **in clear text** (port 389), and every web interface used a **self-signed** certificate. Version 1.1 adds an internal certificate authority:
+
+| | Before | After |
+|---|---|---|
+| GLPI ↔ AD | LDAP 389, clear text | **LDAPS 636**, TLS |
+| GLPI, OPNsense, Wazuh web interfaces | self-signed, browser warning | certificates from **LAB-ROOT-CA**, padlock |
+| Domain machines | — | trust the CA automatically, auto-enrollment by GPO |
+| CA monitoring | — | AD CS auditing + custom Wazuh rules |
+
+Design choice: single-tier Enterprise root CA on a dedicated server, appropriate for a small environment. The guide also documents the production design (offline root + issuing CA).
 
 ## Security note
 
@@ -94,7 +112,7 @@ No password, private key or exported firewall configuration is stored in this re
 
 ## Skills demonstrated
 
-`Windows Server` `Active Directory` `Group Policy` `DNS` `DHCP` `NTFS / AGDLP` `OPNsense` `Cisco IOS` `VLAN / 802.1Q` `ACL` `NAT / PAT` `Linux (Debian, Ubuntu)` `Apache` `Nginx` `MariaDB` `GLPI` `LDAP` `SSH hardening` `OpenMediaVault` `RAID` `Backup & restore` `Wazuh / SIEM` `VMware` `Proxmox` `Technical documentation (EN / FR)`
+`Windows Server` `Active Directory` `Group Policy` `DNS` `DHCP` `NTFS / AGDLP` `OPNsense` `Cisco IOS` `VLAN / 802.1Q` `ACL` `NAT / PAT` `Linux (Debian, Ubuntu)` `Apache` `Nginx` `MariaDB` `GLPI` `LDAP` `SSH hardening` `OpenMediaVault` `RAID` `Backup & restore` `Wazuh / SIEM` `Detection rules (Wazuh)` `PKI / AD CS` `LDAPS` `TLS certificates` `VMware` `Proxmox` `Technical documentation (EN / FR)`
 
 ## Related certifications
 

@@ -35,6 +35,7 @@ Servers, admin and DMZ machines use static addresses.
 | 06 | 06 - LNX01 | lnx01.lab.local | Debian 13 | GLPI 12 |
 | 07 | 07 - PROXY01 | proxy01.lab.local | Debian 13 (no GUI) | Nginx reverse proxy |
 | 08 | 08 - CLT01 | CLT01.lab.local | Windows 11 Pro | client workstation |
+| 09 | 09 - CA01 | CA01.lab.local | Win Server 2025 DC | Enterprise root CA (AD CS) |
 
 ## Network configuration (track A)
 
@@ -52,6 +53,7 @@ Servers, admin and DMZ machines use static addresses.
 | SIEM01 | ens33 | 10.2.0.102/28 | 10.2.0.97 | 10.2.0.70 | VMnet1 |
 | PROXY01 | ens33 | 10.2.0.114/28 | 10.2.0.113 | 10.2.0.70 | DMZ40 |
 | CLT01 | Ethernet0 | DHCP (10.2.0.10) | 10.2.0.1 | 10.2.0.70 | LAN10 |
+| CA01 | Ethernet0 | 10.2.0.74/27 | 10.2.0.65 | 10.2.0.70 | SRV20 |
 | Host PC | VMnet1 adapter | 10.2.0.101/28 | none | home box | VMnet1 |
 
 ## Network devices (track B)
@@ -71,7 +73,7 @@ Zone `lab.local` and reverse zone `0.2.10.in-addr.arpa` on SRV-AD.
 | Name | Type | Address | PTR | Created by |
 |---|---|---|---|---|
 | srv-ad | A | 10.2.0.70 | yes | automatic (DC) |
-| FS01, CLT01 | A | 10.2.0.71 · 10.2.0.10 | yes | automatic (domain members) |
+| FS01, CLT01, CA01 | A | 10.2.0.71 · 10.2.0.10 · 10.2.0.74 | yes | automatic (domain members) |
 | lnx01 | A | 10.2.0.72 | yes | manual |
 | nas01 | A | 10.2.0.73 | yes | manual |
 | siem01 | A | 10.2.0.102 | yes | manual |
@@ -81,11 +83,13 @@ Zone `lab.local` and reverse zone `0.2.10.in-addr.arpa` on SRV-AD.
 
 | Service | URL from the host PC (admin) | URL from inside the lab | Account (login source) | Reachable from |
 |---|---|---|---|---|
-| OPNsense | https://10.2.0.97 | — | root | ADMIN only (GUI listens on ADMINISTRATION only) |
-| Wazuh dashboard | https://10.2.0.102 | https://siem01.lab.local | admin | ADMIN only |
+| OPNsense | https://10.2.0.97 | — | root | ADMIN only (GUI listens on ADMINISTRATION only) · certificate fw01.lab.local |
+| Wazuh dashboard | https://10.2.0.102 | https://siem01.lab.local | admin | ADMIN only · certificate siem01.lab.local |
 | OpenMediaVault | http://10.2.0.73 | http://nas01.lab.local | admin (web) | ADMIN, SERVEURS |
 | GLPI (internal) | http://10.2.0.72 | http://lnx01.lab.local | glpi (Base interne GLPI) · AD users (AD lab.local) | all internal zones |
-| GLPI (published) | https://192.168.10.136 | — | same as above | “Internet” side, through OPNsense NAT → PROXY01 → LNX01 |
+| GLPI (published) | https://192.168.10.136 (or https://glpi.lab.local with a hosts entry) | — | same as above | “Internet” side, through OPNsense NAT → PROXY01 → LNX01 · certificate glpi.lab.local |
+| CA (CRL, CA certificate) | http://10.2.0.74/CertEnroll/ | http://ca01.lab.local/CertEnroll/ | anonymous read | internal zones (not the DMZ) |
+| CA console | certsrv.msc on CA01 | — | LAB\Administrateur | admins only |
 | File shares | \\FS01 (from domain PCs) | \\FS01\Commun … | AD users | domain members |
 | Backup share | \\nas01\Sauvegardes | \\10.2.0.73\Sauvegardes | nas01\SVC-Backup | servers, admin |
 | Admin share FS01 | \\FS01\D$\PARTAGES |  | LAB\Administrateur | admins only |
@@ -120,7 +124,10 @@ Everything not listed is denied (default deny).
 | WAN | PROXY01 | TCP 443 | GLPI publication | Destination NAT + linked rule |
 | OPNsense | SIEM01 | UDP 514 | syslog | (firewall's own traffic) |
 | Agents (all) | SIEM01 | TCP 1514/1515 | events / enrolment | see above |
-| SRV-AD, FS01, LNX01 | NAS01 | TCP 445 | backups (SMB) | same zone, no rule |
+| SRV-AD, FS01, LNX01, CA01 | NAS01 | TCP 445 | backups (SMB) | same zone, no rule |
+| LNX01 (GLPI) | SRV-AD | TCP 636 | LDAPS bind (encrypted) | same zone, no rule |
+| Domain members | CA01 | TCP 135 + RPC | certificate enrollment | same zone / Utilisateurs vers tout |
+| Internal clients | CA01 | TCP 80 | CRL and CA certificate download | same zone / existing rules |
 | SRV-AD | pool.ntp.org | UDP 123 | time source of the domain | Serveurs vers tout |
 
 ## Start-up order
@@ -129,11 +136,12 @@ Everything not listed is denied (default deny).
 |---|---|---|---|
 | 1 | OPNsense | ≈ 1 min | routing between zones, Internet |
 | 2 | SRV-AD | 2–3 min | DNS, AD, DHCP, time — everyone depends on it |
-| 3 | SIEM01 | 2–3 min | ready to receive logs from the others |
-| 4 | NAS01 | ≈ 1 min | backup target |
-| 5 | FS01 | ≈ 1 min | needs AD |
-| 6 | LNX01 | ≈ 1 min | GLPI needs AD/DNS for LDAP; Apache/MariaDB start slowly |
-| 7 | PROXY01 | 30 s | needs LNX01 |
-| 8 | CLT01 | — | last: domain, shares, GPOs available |
+| 3 | CA01 | ≈ 1 min | certificate enrollment, CRL publication |
+| 4 | SIEM01 | 2–3 min | ready to receive logs from the others |
+| 5 | NAS01 | ≈ 1 min | backup target |
+| 6 | FS01 | ≈ 1 min | needs AD |
+| 7 | LNX01 | ≈ 1 min | GLPI needs AD/DNS for LDAPS; Apache/MariaDB start slowly |
+| 8 | PROXY01 | 30 s | needs LNX01 |
+| 9 | CLT01 | — | last: domain, shares, GPOs available |
 
 Shut down in reverse order, always cleanly.

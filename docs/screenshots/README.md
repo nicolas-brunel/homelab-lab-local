@@ -4,7 +4,7 @@ Proof captures taken on the running lab (October 2026). Numbers in file names ma
 
 > Windows, VMware and some web interfaces are from a **French-language installation**; all documentation is in English.
 
-**Contents:** [Lab platform](#lab-platform) · [Network and firewall](#network-and-firewall) · [Active Directory and Group Policy](#active-directory-and-group-policy) · [File server and access control](#file-server-and-access-control) · [GLPI helpdesk](#glpi-helpdesk) · [SSH hardening and DMZ](#ssh-hardening-and-dmz) · [Backups and restore](#backups-and-restore) · [SIEM (Wazuh)](#siem-wazuh)
+**Contents:** [Lab platform](#lab-platform) · [Network and firewall](#network-and-firewall) · [Active Directory and Group Policy](#active-directory-and-group-policy) · [File server and access control](#file-server-and-access-control) · [GLPI helpdesk](#glpi-helpdesk) · [SSH hardening and DMZ](#ssh-hardening-and-dmz) · [Backups and restore](#backups-and-restore) · [SIEM (Wazuh)](#siem-wazuh) · [PKI — v1.1](#pki--v11)
 
 ---
 
@@ -161,3 +161,55 @@ The test itself: five "wrong password" errors (1326), then "account locked" (190
 **Test 24 — repeated firewall blocks**: the workstation sends fast pings to the admin network; the blocks logged by OPNsense reach Wazuh by syslog and trigger rule 87702 (level 10, same source blocked 18 times in 45 seconds).
 
 ![Wazuh 87702](24-wazuh-scan.png)
+
+---
+
+## PKI — v1.1
+
+Internal certificate authority added to fix two weak points: LDAP in clear text and self-signed certificates. Details in chapter 14 of the guide.
+
+**Before / after — GLPI ↔ Active Directory.** Before: LDAP on port 389, the bind password in clear text ([`glpi-ldap-test.png`](glpi-ldap-test.png)). After: **LDAPS on port 636**, encrypted.
+
+![GLPI LDAPS](pki-ldaps-glpi.png)
+
+**Before / after — GLPI over HTTPS.** Before: self-signed certificate, "Not secure" ([`26-glpi-https-dmz.png`](26-glpi-https-dmz.png)). After: certificate issued by **LAB-ROOT-CA**, padlock.
+
+![GLPI trusted HTTPS](pki-glpi-https-trusted.png)
+
+**Healthy PKI**: CA certificate, AIA and CRL/delta CRL published over LDAP and HTTP, all OK.
+
+![pkiview](pki-pkiview.png)
+
+**Domain machines trust the CA automatically** (Enterprise CA certificate published in AD).
+
+![Root trusted](pki-root-trusted.png)
+
+**Only the templates needed are published** (the CA starts with none): Kerberos Authentication for the domain controller, LAB-Serveur-Web for HTTPS.
+
+![Templates](pki-templates.png)
+
+**Auto-enrollment by GPO**, so machines request and renew their certificates on their own.
+
+![Auto-enrollment GPO](pki-autoenroll-gpo.png)
+
+**Issued certificates**: the domain controller (LAB\SRV-AD$) enrolled automatically.
+
+![Issued certificates](pki-issued-certs.png)
+
+**LDAPS on the domain controller**: SSL connection on port 636, 256-bit cipher.
+
+![LDAPS ldp](pki-ldaps-ldp.png)
+
+**Chain of trust** of the GLPI certificate: LAB-ROOT-CA → glpi.lab.local. The private key was generated on the proxy and never left it.
+
+![Certificate chain](pki-cert-chain.png)
+
+**OPNsense and Wazuh** web interfaces with certificates from the internal CA.
+
+![OPNsense trusted](pki-opnsense-trusted.png)
+
+![Wazuh trusted](pki-wazuh-trusted.png)
+
+**Monitoring the CA**: CA auditing is off by default and Wazuh has no built-in rule for AD CS events, so custom rules were written (100200–100203, MITRE T1649). Test: restarting Certificate Services raises rule 100200 on agent CA01.
+
+![Wazuh custom rule](pki-wazuh-custom-rule.png)

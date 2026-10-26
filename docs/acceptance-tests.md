@@ -1,8 +1,10 @@
 # Acceptance tests
 
-Run after every rebuild. Each test has an expected result; screenshots of the proofs go in [`screenshots/`](screenshots/).
+Run after every rebuild. Each test has an expected result; screenshots of the proofs are in [`screenshots/`](screenshots/README.md).
 
 Track B (Cisco hardware): run the network tests of chapter 11B of the guide first; tests 3–5 then apply to the router ACLs instead of OPNsense.
+
+Tests 28–32 cover the PKI added in v1.1 (chapter 14 of the guide).
 
 | # | Area | Test | Expected | Result |
 |---|---|---|---|---|
@@ -33,3 +35,8 @@ Track B (Cisco hardware): run the network tests of chapter 11B of the guide firs
 | 25 | DMZ | PROXY01 → 10.2.0.70:445 and 10.2.0.72:22 | BLOCKED |  |
 | 26 | DMZ | https://192.168.10.136 from the host | GLPI login page through Nginx |  |
 | 27 | DMZ | curl -kI https://localhost on PROXY01 | Server: nginx (no version) |  |
+| 28 | PKI | pkiview.msc on CA01 | every line OK (CA certificate, AIA, CDP, delta CRL) |  |
+| 29 | PKI | certlm.msc on SRV-AD → Personnel | certificate from LAB-ROOT-CA, template Kerberos Authentication |  |
+| 30 | PKI | GLPI LDAP directory → Tester | port 636, 5 steps green |  |
+| 31 | PKI | https://192.168.10.136 · https://10.2.0.97 · https://10.2.0.102 from the host | padlock, no warning |  |
+| 32 | PKI | net stop certsvc && net start certsvc on CA01 | Wazuh rule 100200 (agent CA01) |  |

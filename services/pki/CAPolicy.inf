@@ -1,0 +1,14 @@
+; C:\Windows\CAPolicy.inf on CA01 — must exist BEFORE AD CS is configured
+[Version]
+Signature="$Windows NT$"
+
+[Certsrv_Server]
+RenewalKeyLength=4096
+RenewalValidityPeriod=Years
+RenewalValidityPeriodUnits=10
+CRLPeriod=Weeks
+CRLPeriodUnits=1
+CRLDeltaPeriod=Days
+CRLDeltaPeriodUnits=1
+; start with no published template: only the needed ones are added (least privilege)
+LoadDefaultTemplates=0

@@ -1,6 +1,6 @@
 # Troubleshooting log
 
-Real problems met while building this lab (35 entries), with the cause found and the fix applied. Most of them are classic issues that also happen in production environments.
+Real problems met while building this lab (42 entries), with the cause found and the fix applied. Most of them are classic issues that also happen in production environments.
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -47,6 +47,20 @@ Five more problems found while re-testing every feature to take the [screenshots
 | `dcdiag` fails DFSREvent / SystemLog; DHCP events 1035, 1036, 1059 after each DC boot | on a single-DC lab the DHCP service starts before AD DS is ready; the DHCP local security groups were missing | `netsh dhcp add securitygroups`, restart DHCP, `sc config dhcpserver start= delayed-auto`; verified clean at the next boot (only 1044 "authorized") |
 | Scheduled and one-time backups fail: "cannot read the backup destination"; ping, port 445 and `net use` with the same account all work | the credentials stored in the backup schedule were outdated | `net use * /delete`, then Backup Schedule → Modify → re-enter LAB\SVC-Backup at the destination step; backup succeeded |
 | Backup progress window stuck at "0 KB transferred" for 30 minutes | the progress dialog does not refresh; the backup had actually finished | check the main wbadmin page (F5) before cancelling; if it is really stuck, see the VSS entry above |
+
+## Found while adding the PKI (v1.1, October 2026)
+
+Seven more problems met while adding the internal certificate authority (chapter 14 of the guide).
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| CA created as **standalone**; no "Modèles de certificats" folder in certsrv; `certutil -cainfo type` → 3 | AD CS configured while logged on with the **local** administrator: "AC d'entreprise" was greyed out | `Uninstall-AdcsCertificationAuthority`, log on as **LAB\Administrateur** (Enterprise Admins), reconfigure as Enterprise root CA |
+| Delta CRL `LAB-ROOT-CA+.crl` not downloadable over HTTP | IIS request filtering blocks the **+** in URLs | `appcmd set config "Default Web Site/CertEnroll" -section:system.webServer/security/requestFiltering -allowDoubleEscaping:true` |
+| Certificate template name cannot be changed | **Appliquer** clicked before typing the name: once saved, a template name is locked | delete the copy, duplicate again, set **Compatibility first**, type the name, then OK |
+| PROXY01 cannot `wget` the root certificate from CA01 | by design: the DMZ is not allowed to reach the lab (isolation verified) | copy the public root certificate by hand, `update-ca-certificates` |
+| OPNsense: entry with empty Issuer, then "Invalid X509 certificate" on import | wrong method (self-signed) at creation, then the **.csr** pasted instead of the signed **.cer** | recreate with "Create a Certificate Signing Request"; paste the block `BEGIN CERTIFICATE` (no "REQUEST") |
+| `chown`/`chmod ... lab-dashboard*.pem`: "No such file or directory" | the `*` is expanded by the user's shell **before** sudo, and the user cannot list the protected certs folder | use full file names |
+| CA events (4880, 4887...) absent from Wazuh although the agent is active | CA auditing is **off by default**, and no built-in Wazuh rule raises AD CS events | CA Audit tab + `auditpol` (Certification Services), custom rules 100200–100203 in `local_rules.xml` |
 
 ## Method used
 

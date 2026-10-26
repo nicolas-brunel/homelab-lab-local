@@ -10,6 +10,7 @@ Next steps for the lab, focused on automation (Python and Ansible) and on the CC
 | 4 | Python + Netmiko: collect `show ip interface brief` / `show interfaces trunk` and flag interfaces that are down | Python, SSH automation | planned |
 | 5 | Python: automate part of the acceptance tests (ping, open / blocked ports) and print a report | Python sockets, reporting | planned |
 | 6 | Build track B on real Cisco hardware | CCNA practice | planned |
-| 7 | LDAPS for GLPI with AD Certificate Services | PKI, TLS | idea |
+| 7 | LDAPS for GLPI with AD Certificate Services | PKI, TLS | **done (v1.1)** |
+| 7b | Two-tier PKI (offline root + issuing CA), OCSP responder | PKI design | idea |
 | 8 | Second domain controller (Server Core) | AD replication | idea |
 | 9 | Off-site / versioned backups (3-2-1 rule) | backup strategy | idea |
